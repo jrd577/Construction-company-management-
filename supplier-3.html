@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crewboard — Join</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{color-scheme:light;--navy:#14293a;--amber:#f2b01e;--bg:#eef1f3;--ink:#17232c;--muted:#667580;--line:#d6dde1;--white:#fff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);font:15px system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);display:grid;place-items:center;padding:20px}
+.card{width:min(100%,480px);background:var(--white);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 14px 38px #14293a12}
+header{background:var(--navy);color:white;padding:22px 24px;display:flex;align-items:center;gap:12px}
+.mark{height:38px;width:38px;background:var(--amber);border-radius:6px;display:grid;place-items:center;color:var(--navy);font-weight:900;font-size:20px}
+.brand{font-weight:800;font-size:24px;letter-spacing:.02em}.tag{font-size:12px;color:#d2dce3;margin-top:2px}
+main{padding:24px}h1{font-size:25px;margin:0 0 6px}p{margin:0 0 20px;color:var(--muted);line-height:1.5}
+label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}
+input,select{width:100%;padding:12px;border:1px solid #b8c4cc;border-radius:7px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:2px solid #2b6cb0;outline-offset:1px}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.role{border:1px solid #b8c4cc;background:#fff;border-radius:8px;padding:14px 10px;text-align:left;cursor:pointer;color:var(--ink)}
+.role strong{display:block;font-size:15px}.role small{display:block;color:var(--muted);margin-top:4px}
+.role[aria-pressed=true]{border:2px solid var(--navy);background:#f2f6f8;padding:13px 9px}
+button.submit{width:100%;border:0;border-radius:7px;padding:13px 16px;background:var(--navy);color:#fff;font:700 15px system-ui;cursor:pointer;margin-top:20px}
+button:disabled{opacity:.6;cursor:wait}.message{font-size:14px;line-height:1.5;margin-top:14px;padding:11px;border-radius:7px;display:none;overflow-wrap:anywhere}.message.show{display:block}.error{background:#fff0ef;color:#922d25}.success{background:#e9f7ef;color:#17633c}.foot{font-size:12px;text-align:center;margin-top:18px;color:var(--muted)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="card">
+<header><div class="mark">C</div><div><div class="brand">Crewboard</div><div class="tag">Join the Crewboard network</div></div></header>
+<main>
+<h1>Create your account</h1>
+<p>Enter your email and password to begin. You will choose to join as a worker or supplier next.</p>
+<form id="register">
+<label for="email">Email address</label><input id="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com">
+<label for="password">Password</label><input id="password" type="password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
+<button class="submit" id="submit" type="submit">Sign up</button>
+<div id="roleStep" class="hidden">
+<p style="margin:18px 0 8px">Account created. Now choose how you want to join Crewboard.</p>
+<div class="roles" role="group" aria-label="Choose account type">
+<button class="role" type="button" data-role="worker" aria-pressed="true"><strong>Join as a worker</strong><small>Register your skills and availability</small></button>
+<button class="role" type="button" data-role="supplier" aria-pressed="false"><strong>Join as a supplier</strong><small>Register your company and supplies</small></button>
+</div>
+<div id="detailsStep" class="hidden">
+<label for="fullName">Full name</label><input id="fullName" autocomplete="name" maxlength="100" placeholder="Your full name">
+<div id="companyWrap" class="hidden"><label for="company">Company name</label><input id="company" autocomplete="organization" maxlength="120" placeholder="Your company name"></div>
+<label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel" maxlength="40" placeholder="+254…">
+<div id="skillsWrap"><label for="skills">Skills / trade</label><input id="skills" maxlength="250" placeholder="e.g. electrician, mason, plumber"></div>
+<div id="suppliesWrap" class="hidden"><label for="supplies">What do you supply?</label><input id="supplies" maxlength="500" placeholder="e.g. cement, sand, tools"></div>
+<button class="submit" id="finish" type="button">Continue as worker</button>
+</div>
+</div>
+<div id="message" class="message" role="status" aria-live="polite"></div>
+</form>
+<div class="foot">Your account is registered with Crewboard. Never share your password.</div>
+</main>
+</div>
+<script src="./config.js"></script>
+<script>
+(function(){
+  const cfg=window.CREWBOARD_SUPABASE||{};
+  const message=document.getElementById('message');
+  const submit=document.getElementById('submit');
+  const roles=[...document.querySelectorAll('[data-role]')];
+  let role='worker', userId=null;
+  function choose(next){
+    role=next;
+    roles.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.role===role)));
+    document.getElementById('companyWrap').classList.toggle('hidden',role!=='supplier');
+    document.getElementById('suppliesWrap').classList.toggle('hidden',role!=='supplier');
+    document.getElementById('skillsWrap').classList.toggle('hidden',role!=='worker');
+    document.getElementById('company').required=role==='supplier';
+    document.getElementById('supplies').required=role==='supplier';
+    document.getElementById('skills').required=role==='worker';
+    document.getElementById('fullName').required=true;
+    document.getElementById('phone').required=true;
+    document.getElementById('finish').textContent='Continue as '+role;
+  }
+  roles.forEach(b=>b.addEventListener('click',()=>choose(b.dataset.role)));
+  function show(text,kind){message.textContent=text;message.className='message show '+kind;}
+  document.getElementById('register').addEventListener('submit',function(e){
+    e.preventDefault();
+    message.className='message';
+    const email=document.getElementById('email').value.trim();
+    const password=document.getElementById('password').value;
+    if(!email||!password){show('Enter your email and password first.','error');return;}
+    if(password.length<8){show('Use a password with at least 8 characters.','error');return;}
+    document.getElementById('roleStep').classList.remove('hidden');
+    document.getElementById('detailsStep').classList.remove('hidden');
+    document.getElementById('email').readOnly=true;
+    document.getElementById('password').readOnly=true;
+    submit.classList.add('hidden');
+    show('Great. Now choose whether you want to join as a worker or supplier, then complete your details.','success');
+  });
+  document.getElementById('finish').addEventListener('click',async function(){
+    const cfg=window.CREWBOARD_SUPABASE||{};
+    if(!cfg.url||!cfg.anonKey||!window.supabase){show('Supabase configuration is missing. Check config.js and your connection.','error');return;}
+    const fullName=document.getElementById('fullName').value.trim();
+    const phone=document.getElementById('phone').value.trim();
+    const company=document.getElementById('company').value.trim();
+    const supplies=document.getElementById('supplies').value.trim();
+    const skills=document.getElementById('skills').value.trim();
+    const email=document.getElementById('email').value.trim();
+    const password=document.getElementById('password').value;
+    if(!fullName||!phone||(role==='supplier'&&(!company||!supplies))||(role==='worker'&&!skills)){
+      show('Please complete the required details for your selected role.','error');return;
+    }
+    const metadata={full_name:fullName,phone,account_type:role,...(role==='worker'?{skills}:{company_name:company,supplies})};
+    const client=window.supabase.createClient(cfg.url,cfg.anonKey);
+    const finish=document.getElementById('finish');
+    finish.disabled=true;finish.textContent='Creating account…';
+    try{
+      const {data,error}=await client.auth.signUp({email,password,options:{data:metadata}});
+      if(error)throw error;
+      show(data.session?'Your Crewboard '+role+' account has been created successfully.':'Account created. Check your email to confirm your Crewboard account.','success');
+      finish.textContent='Account created';
+    }catch(err){show(err.message||'Registration failed. Please try again.','error');finish.disabled=false;choose(role);}
+  });
+  choose('worker');\n  document.getElementById('roleStep').classList.add('hidden');\n  document.getElementById('detailsStep').classList.add('hidden');
+})();
+</script>
+</body>
+</html>
