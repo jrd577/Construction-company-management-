@@ -1,0 +1,75 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crewboard Manager</title><meta name="robots" content="noindex">
+<style>
+:root{--bg:#ECEEEF;--s:#fff;--ink:#17232C;--ink2:#55636E;--line:#D7DCDF;--bar:#14293A;--pri:#1E3A4C;--acc:#F2B01E;--bad:#B3261E}
+@media(prefers-color-scheme:dark){:root{--bg:#0F161B;--s:#172028;--ink:#E6ECEF;--ink2:#9BA9B3;--line:#2A3640;--bar:#0A1218;--pri:#6FB1D6;--bad:#F28B82}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",sans-serif}
+header{background:var(--bar);color:#fff;padding:12px 16px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+header b{font-size:22px}.tabs{display:flex;overflow-x:auto;width:100%}.tabs button{background:none;border:0;border-bottom:3px solid transparent;color:#fff;opacity:.7;font:600 14px sans-serif;padding:10px 12px;text-transform:uppercase;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
+.tabs button.on{opacity:1;border-color:var(--acc)}main{max-width:1000px;margin:auto;padding:16px}
+.card{background:var(--s);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px}.m{color:var(--ink2);font-size:13px}
+.act{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+input,select,textarea{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.btn{font:600 14px sans-serif;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:var(--s);color:var(--ink);cursor:pointer}.btn.p{background:var(--pri);border-color:var(--pri);color:#fff}.btn.d{color:var(--bad)}
+.tag{font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+.login{max-width:340px;margin:60px auto;display:grid;gap:10px}.err{color:var(--bad)}.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}[hidden]{display:none!important}
+</style></head><body>
+<section id="login" class="login card"><h2 style="margin:0">Manager login</h2>
+<input id="em" type="email" placeholder="Email" autocomplete="username"><input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+<button class="btn p" id="go">Sign in</button><div class="err" id="le"></div></section>
+<div id="app" hidden><header><b>Crewboard</b><span style="flex:1"></span><button class="btn" id="out">Sign out</button>
+<nav class="tabs" id="tabs"></nav></header><main id="main"></main></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY),$=i=>document.getElementById(i);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let tab='workers',D={workers:[],suppliers:[],projects:[],positions:[],assignments:[]},filter='all';
+const TABS=[['workers','Workers'],['suppliers','Suppliers'],['projects','Projects'],['positions','Roles']];
+async function init(){const{data:{session}}=await sb.auth.getSession();
+ if(!session){$('login').hidden=false;$('app').hidden=true;return}
+ const{data:m}=await sb.from('managers').select('user_id').maybeSingle();
+ if(!m){await sb.auth.signOut();$('le').textContent='This account is not a manager.';$('login').hidden=false;$('app').hidden=true;return}
+ $('login').hidden=true;$('app').hidden=false;await load();render()}
+async function load(){const q=t=>sb.from(t).select(t==='suppliers'?'*,supplier_items(*)':'*').order('created_at',{ascending:false});
+ const[w,s,p,r,a]=await Promise.all([q('workers'),q('suppliers'),q('projects'),sb.from('positions').select('*').order('name'),sb.from('assignments').select('*,projects(name)')]);
+ D={workers:w.data||[],suppliers:s.data||[],projects:p.data||[],positions:r.data||[],assignments:a.data||[]}}
+$('go').onclick=async()=>{$('le').textContent='';const{error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});
+ if(error)$('le').textContent='Wrong email or password.';else init()};
+$('out').onclick=async()=>{await sb.auth.signOut();init()};
+async function run(p){const{error}=await p;if(error)alert(error.message);await load();render()}
+window.act={
+ role:(id,v)=>run(sb.from('workers').update({assigned_role_id:v||null}).eq('id',id)),
+ status:(t,id,v)=>run(sb.from(t).update({status:v}).eq('id',id)),
+ avail:(id,v)=>run(sb.from('workers').update({available:v}).eq('id',id)),
+ assign:(id,pid)=>pid&&run(sb.from('assignments').insert({worker_id:id,project_id:pid})),
+ release:id=>run(sb.from('assignments').delete().eq('id',id)),
+ del:(t,id)=>confirm('Delete permanently?')&&run(sb.from(t).delete().eq('id',id)),
+ filt:v=>{filter=v;render()}};
+const opts=(arr,sel,label)=>arr.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x[label])}</option>`).join('');
+const stSel=(t,x)=>`<select onchange="act.status('${t}','${x.id}',this.value)">${['pending','approved','rejected'].map(s=>`<option ${s===x.status?'selected':''}>${s}</option>`).join('')}</select>`;
+function render(){$('tabs').innerHTML=TABS.map(([k,l])=>`<button class="${k===tab?'on':''}" onclick="tab='${k}';render()">${l}${D[k]?` (${D[k].length})`:''}</button>`).join('');
+ $('main').innerHTML=({workers:rW,suppliers:rS,projects:rP,positions:rR})[tab]()}
+function rW(){const list=D.workers.filter(w=>filter==='all'||w.status===filter);
+ return `<div class="row"><select onchange="act.filt(this.value)">${['all','pending','approved','rejected'].map(s=>`<option ${s===filter?'selected':''}>${s}</option>`).join('')}</select></div>`+
+ (list.map(w=>{const as=D.assignments.filter(a=>a.worker_id===w.id);return `<div class="card"><div class="top"><b>${esc(w.name)}</b><span class="tag">${w.available?'Available':'Unavailable'}</span></div>
+ <div class="m">${esc([w.phone,w.position&&'Applied: '+w.position,w.title,w.years!=null&&w.years+' yrs',w.area].filter(Boolean).join(' · '))}</div>${w.skills?`<div class="m">${esc(w.skills)}</div>`:''}
+ ${as.length?`<div class="act">${as.map(a=>`<span class="tag">${esc(a.projects?.name)} <a href="#" onclick="act.release('${a.id}');return false">✕</a></span>`).join('')}</div>`:''}
+ <div class="act">${stSel('workers',w)}
+ <select onchange="act.role('${w.id}',this.value)"><option value="">No role assigned</option>${opts(D.positions,w.assigned_role_id,'name')}</select>
+ <select onchange="act.assign('${w.id}',this.value);this.value=''"><option value="">Assign to project…</option>${opts(D.projects.filter(p=>p.status!=='done'&&!as.some(a=>a.project_id===p.id)),'','name')}</select>
+ <button class="btn" onclick="act.avail('${w.id}',${!w.available})">${w.available?'Mark unavailable':'Mark available'}</button><button class="btn d" onclick="act.del('workers','${w.id}')">Delete</button></div></div>`}).join('')||'<p class="m">No workers yet. Share your join link.</p>')}
+function rS(){return D.suppliers.map(s=>`<div class="card"><div class="top"><b>${esc(s.company)}</b><span class="tag">${esc(s.category||'')}</span></div>
+ <div class="m">${esc([s.contact,s.phone,s.area].filter(Boolean).join(' · '))}</div>
+ <div class="m">${s.supplier_items.map(i=>esc(i.name+(i.unit?' / '+i.unit:'')+(i.price!=null?' – '+i.price:''))).join('; ')}</div>
+ <div class="act">${stSel('suppliers',s)}<button class="btn d" onclick="act.del('suppliers','${s.id}')">Delete</button></div></div>`).join('')||'<p class="m">No suppliers yet.</p>'}
+function rP(){return `<form class="row" onsubmit="addP(event)"><input name="name" placeholder="Project name" required><input name="client" placeholder="Client"><input name="site" placeholder="Site"><button class="btn p">Add project</button></form>`+
+ D.projects.map(p=>{const n=D.assignments.filter(a=>a.project_id===p.id).length;return `<div class="card"><div class="top"><b>${esc(p.name)}</b><span class="tag">${n} on crew</span></div><div class="m">${esc([p.client,p.site].filter(Boolean).join(' · '))}</div>
+ <div class="act"><select onchange="run(sb.from('projects').update({status:this.value}).eq('id','${p.id}'))">${['planning','active','done'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn d" onclick="act.del('projects','${p.id}')">Delete</button></div></div>`}).join('')}
+function rR(){return `<form class="row" onsubmit="addR(event)"><input name="name" placeholder="New role (e.g. Electrician)" required><input name="division" placeholder="Division"><button class="btn p">Add role</button></form>`+
+ D.positions.map(p=>`<div class="card top"><span><b>${esc(p.name)}</b> <span class="m">${esc(p.division||'')}</span></span><button class="btn d" onclick="act.del('positions','${p.id}')">Delete</button></div>`).join('')}
+function addP(e){e.preventDefault();const f=new FormData(e.target);run(sb.from('projects').insert({name:f.get('name'),client:f.get('client')||null,site:f.get('site')||null}))}
+function addR(e){e.preventDefault();const f=new FormData(e.target);run(sb.from('positions').insert({name:f.get('name'),division:f.get('division')||null}))}
+init();
+</script></body></html>
