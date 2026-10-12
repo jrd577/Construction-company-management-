@@ -1,1 +1,1 @@
-{ "outputDirectory":"public","rewrites": [ { "source": "/", "destination": "/join.html" } ] }
+{ "outputDirectory":"public","rewrites": [ { "source": "/", "destination": "/supplier.html" } ] }
